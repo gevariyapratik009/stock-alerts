@@ -3,7 +3,7 @@ name: Stock Alerts
 on:
   schedule:
     # 9:00 AM EST (2:00 PM UTC) - Premarket
-    - cron: '0 14 * * MON-FRI'
+    - cron: '0 13 * * MON-FRI'
     # 12:00 PM EST (5:00 PM UTC) - Midday
     - cron: '0 17 * * MON-FRI'
     # 4:05 PM EST (9:05 PM UTC) - Close
