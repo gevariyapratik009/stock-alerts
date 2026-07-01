@@ -1,4 +1,4 @@
-# 📈 Stock Alerts
+# 📈 Stock Alertss
 
 Automated stock market alerts via Telegram using GitHub Actions.
 
