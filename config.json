@@ -1,0 +1,17 @@
+{
+  "telegram_token": "YOUR_BOT_TOKEN_HERE",
+  "telegram_chat_id": "YOUR_CHAT_ID_HERE",
+  
+  "stocks": ["QQQ", "TSLA", "NVDA", "AVGO", "AMD"],
+  
+  "stock_display": {
+    "show_sentiment": true,
+    "show_news": true,
+    "news_articles_count": 5,
+    "show_urls": true
+  },
+  
+  "features": {
+    "include_economic_calendar": true
+  }
+}
