@@ -1,0 +1,41 @@
+name: Stock Alerts
+
+on:
+  schedule:
+    # 9:00 AM EST (2:00 PM UTC) - Premarket
+    - cron: '0 14 * * MON-FRI'
+    # 12:00 PM EST (5:00 PM UTC) - Midday
+    - cron: '0 17 * * MON-FRI'
+    # 4:05 PM EST (9:05 PM UTC) - Close
+    - cron: '5 21 * * MON-FRI'
+  
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+
+jobs:
+  stock-alerts:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install yfinance requests beautifulsoup4
+      
+      - name: Run stock alerts
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python hermes_stock_telegram_alerts.py
+      
+      - name: Show completion time
+        if: always()
+        run: echo "✅ Stock alerts completed at $(date)"
