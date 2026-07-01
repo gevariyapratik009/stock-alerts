@@ -21,38 +21,42 @@ from bs4 import BeautifulSoup
 # ═══════════════════════════════════════════════════════════════
 
 def load_config():
-    """Load configuration from config.json or environment variables"""
+    """Load configuration from config.json
+    Telegram credentials MUST come from GitHub Secrets (environment variables)"""
     try:
-        # Try environment variables first (GitHub Actions)
-        token = os.getenv('TELEGRAM_TOKEN')
-        chat_id = os.getenv('TELEGRAM_CHAT_ID')
-        
-        if token and chat_id:
-            return {
-                'telegram_token': token,
-                'telegram_chat_id': chat_id,
-                'stocks': ['QQQ', 'TSLA', 'NVDA', 'AVGO', 'AMD'],
-                'features': {'include_economic_calendar': True}
-            }
-        
-        # Fallback to config.json
         with open('config.json', 'r') as f:
             return json.load(f)
     except FileNotFoundError:
-        print("[ERROR] config.json not found and no environment variables set!")
+        print("[ERROR] config.json not found!")
         sys.exit(1)
     except Exception as e:
         print(f"[ERROR] Failed to load config: {e}")
         sys.exit(1)
 
 CONFIG = load_config()
-TELEGRAM_TOKEN = CONFIG.get('telegram_token')
-TELEGRAM_CHAT_ID = CONFIG.get('telegram_chat_id')
-STOCKS = CONFIG.get('stocks', ['QQQ', 'TSLA', 'NVDA', 'AVGO', 'AMD'])
-INCLUDE_CALENDAR = CONFIG.get('features', {}).get('include_economic_calendar', True)
 
-if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-    print("[ERROR] Telegram token or chat ID missing!")
+# Telegram credentials MUST come from GitHub Secrets (environment variables)
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+
+# Get other settings from config.json
+STOCKS = CONFIG.get('stocks')
+INCLUDE_CALENDAR = CONFIG.get('features', {}).get('include_economic_calendar', True)
+CALENDAR_CONFIG = CONFIG.get('economic_calendar', {})
+
+# Validate required fields
+if not TELEGRAM_TOKEN:
+    print("[ERROR] TELEGRAM_TOKEN not set in GitHub Secrets!")
+    print("        Go to: Settings → Secrets and variables → Actions → New repository secret")
+    sys.exit(1)
+
+if not TELEGRAM_CHAT_ID:
+    print("[ERROR] TELEGRAM_CHAT_ID not set in GitHub Secrets!")
+    print("        Go to: Settings → Secrets and variables → Actions → New repository secret")
+    sys.exit(1)
+
+if not STOCKS:
+    print("[ERROR] 'stocks' list missing in config.json!")
     sys.exit(1)
 
 # ═══════════════════════════════════════════════════════════════
@@ -146,7 +150,10 @@ def fetch_us_economic_calendar():
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         
-        response = requests.get(url, headers=headers, timeout=15)
+        request_timeout = CALENDAR_CONFIG.get('request_timeout', 15)
+        max_events = CALENDAR_CONFIG.get('max_events', 30)
+        
+        response = requests.get(url, headers=headers, timeout=request_timeout)
         if response.status_code != 200:
             print(f"[ERROR] Status {response.status_code}")
             return None
@@ -156,7 +163,7 @@ def fetch_us_economic_calendar():
         
         event_links = soup.find_all('a', href=lambda x: x and '/economic-calendar/' in x)
         
-        for link in event_links[:30]:
+        for link in event_links[:max_events]:
             try:
                 link_text = link.get_text(strip=True)
                 if not link_text or len(link_text) < 3:
