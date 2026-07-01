@@ -1,18 +1,12 @@
 #!/usr/bin/env python3
 """
-Stock Fetch with Articles - Config-Driven
+Stock Fetch with Articles - Fully Config-Driven
 Fetches stock data and news for a single symbol
-All display options controlled by config.json
-
-Usage:
-    python stock_fetch_with_articles.py QQQ
-    python stock_fetch_with_articles.py TSLA --full
+ALL settings come from config.json - no hardcoded values
 """
 
 import yfinance as yf
 from datetime import datetime, timedelta
-import requests
-from bs4 import BeautifulSoup
 import json
 import sys
 import os
@@ -22,28 +16,23 @@ import os
 # ═══════════════════════════════════════════════════════════════
 
 def load_config():
-    """Load config.json"""
+    """Load config.json - REQUIRED"""
     try:
-        # Try local config.json first
         if os.path.exists('config.json'):
             with open('config.json', 'r') as f:
                 return json.load(f)
-        # Fallback to default
-        return {
-            "stock_display": {
-                "show_sentiment": True,
-                "show_news": True,
-                "news_articles_count": 5,
-                "show_summaries": False,
-                "show_urls": True
-            }
-        }
+        else:
+            print("[ERROR] config.json not found!")
+            sys.exit(1)
     except Exception as e:
-        print(f"[WARNING] Could not load config.json: {e}")
-        return {}
+        print(f"[ERROR] Failed to load config: {e}")
+        sys.exit(1)
 
 CONFIG = load_config()
 DISPLAY_CONFIG = CONFIG.get('stock_display', {})
+SENTIMENT_THRESHOLDS = CONFIG.get('sentiment_thresholds', {})
+SENTIMENT_SCORES = CONFIG.get('sentiment_scores', {})
+NEWS_CONFIG = CONFIG.get('news', {})
 
 # ═══════════════════════════════════════════════════════════════
 # FORMATTING FUNCTIONS
@@ -65,7 +54,7 @@ def fmt_change(current, prev):
     return f"{emoji} {change:+.2f} ({percent:+.2f}%)"
 
 # ═══════════════════════════════════════════════════════════════
-# SENTIMENT ANALYSIS
+# SENTIMENT ANALYSIS (CONFIG-DRIVEN)
 # ═══════════════════════════════════════════════════════════════
 
 def get_market_sentiment(info):
@@ -73,56 +62,75 @@ def get_market_sentiment(info):
     score = 0
     factors = []
     
-    # P/E Ratio (lower is better, but reasonable)
+    # P/E Ratio thresholds from config
+    pe_undervalued = SENTIMENT_THRESHOLDS.get('pe_undervalued', 15)
+    pe_overvalued = SENTIMENT_THRESHOLDS.get('pe_overvalued', 25)
+    pe_score_undervalued = SENTIMENT_SCORES.get('pe_undervalued', 15)
+    pe_score_fair = SENTIMENT_SCORES.get('pe_fair', 5)
+    pe_score_overvalued = SENTIMENT_SCORES.get('pe_overvalued', -10)
+    
     pe = info.get('trailingPE')
     if pe:
-        if pe < 15:
-            score += 15
-            factors.append("✅ P/E < 15 (undervalued)")
-        elif pe < 25:
-            score += 5
-            factors.append("➖ P/E 15-25 (fair)")
+        if pe < pe_undervalued:
+            score += pe_score_undervalued
+            factors.append(f"✅ P/E < {pe_undervalued} (undervalued)")
+        elif pe < pe_overvalued:
+            score += pe_score_fair
+            factors.append(f"➖ P/E {pe_undervalued}-{pe_overvalued} (fair)")
         else:
-            score -= 10
-            factors.append("⚠️ P/E > 25 (overvalued)")
+            score += pe_score_overvalued
+            factors.append(f"⚠️ P/E > {pe_overvalued} (overvalued)")
     
-    # 52-Week momentum
+    # 52-Week momentum thresholds from config
+    momentum_high = SENTIMENT_THRESHOLDS.get('momentum_high', 75)
+    momentum_low = SENTIMENT_THRESHOLDS.get('momentum_low', 25)
+    momentum_score_high = SENTIMENT_SCORES.get('momentum_high', 20)
+    momentum_score_low = SENTIMENT_SCORES.get('momentum_low', -20)
+    
     high_52w = info.get('fiftyTwoWeekHigh')
     low_52w = info.get('fiftyTwoWeekLow')
     current_price = info.get('currentPrice')
     
     if high_52w and low_52w and current_price:
         momentum = (current_price - low_52w) / (high_52w - low_52w) * 100
-        if momentum > 75:
-            score += 20
+        if momentum > momentum_high:
+            score += momentum_score_high
             factors.append("📈 Trading near 52-week high")
-        elif momentum < 25:
-            score -= 20
+        elif momentum < momentum_low:
+            score += momentum_score_low
             factors.append("📉 Trading near 52-week low")
     
-    # Dividend
+    # Dividend threshold from config
+    dividend_threshold = SENTIMENT_THRESHOLDS.get('dividend_threshold', 0.02)
+    dividend_score = SENTIMENT_SCORES.get('dividend_good', 10)
     div = info.get('dividendYield')
-    if div and div > 0.02:
-        score += 10
+    if div and div > dividend_threshold:
+        score += dividend_score
         factors.append(f"💰 Dividend {div*100:.2f}%")
     
-    # Volume
+    # Volume ratio from config
+    volume_ratio_threshold = SENTIMENT_THRESHOLDS.get('volume_ratio', 1.5)
+    volume_score = SENTIMENT_SCORES.get('volume_high', 5)
     volume = info.get('volume')
     avg_vol = info.get('averageVolume')
     if volume and avg_vol:
         vol_ratio = volume / avg_vol
-        if vol_ratio > 1.5:
-            score += 5
+        if vol_ratio > volume_ratio_threshold:
+            score += volume_score
             factors.append(f"📊 High volume ({vol_ratio:.1f}x avg)")
     
-    # Beta
+    # Beta thresholds from config
+    beta_low = SENTIMENT_THRESHOLDS.get('beta_low', 1.0)
+    beta_high = SENTIMENT_THRESHOLDS.get('beta_high', 1.5)
+    beta_score_low = SENTIMENT_SCORES.get('beta_low', 5)
+    beta_score_high = SENTIMENT_SCORES.get('beta_high', -5)
     beta = info.get('beta')
     if beta:
-        if beta < 1:
-            score += 5
+        if beta < beta_low:
+            score += beta_score_low
             factors.append("🛡️ Low volatility")
-        elif beta > 1.5:
-            score -= 5
+        elif beta > beta_high:
+            score += beta_score_high
             factors.append("⚡ High volatility")
     
     # Clamp score
@@ -140,7 +148,7 @@ def get_market_sentiment(info):
     return score, label, factors
 
 # ═══════════════════════════════════════════════════════════════
-# NEWS FETCHING
+# NEWS FETCHING (CONFIG-DRIVEN)
 # ═══════════════════════════════════════════════════════════════
 
 def fetch_news(ticker):
@@ -150,7 +158,9 @@ def fetch_news(ticker):
         if not news:
             return []
         
-        cutoff_time = datetime.now() - timedelta(hours=72)
+        # Lookback hours from config
+        hours_lookback = NEWS_CONFIG.get('hours_lookback', 72)
+        cutoff_time = datetime.now() - timedelta(hours=hours_lookback)
         recent_news = []
         
         for item in news:
@@ -206,8 +216,6 @@ def fetch_and_format_stock(symbol):
         volume = info.get('volume')
         avg_volume = info.get('averageVolume')
         mkt_cap = info.get('marketCap')
-        sector = info.get('sector')
-        industry = info.get('industry')
         
         # Format output
         lines = []
@@ -256,7 +264,7 @@ def fetch_and_format_stock(symbol):
         
         # News Section
         if DISPLAY_CONFIG.get('show_news', True):
-            lines.append(f"\n📰 NEWS (Last 72 hours)")
+            lines.append(f"\n📰 NEWS (Last {NEWS_CONFIG.get('hours_lookback', 72)} hours)")
             news = fetch_news(ticker)
             news_count = DISPLAY_CONFIG.get('news_articles_count', 5)
             
@@ -286,7 +294,7 @@ def fetch_and_format_stock(symbol):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python stock_fetch_with_articles.py SYMBOL [--full]")
+        print("Usage: python stock_fetch_with_articles.py SYMBOL")
         sys.exit(1)
     
     symbol = sys.argv[1].upper()
