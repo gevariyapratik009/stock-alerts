@@ -9,7 +9,7 @@ on:
     - cron: '0 17 * * MON-FRI'
       timezone: "America/New_York"
     # 4:05 PM EST (9:05 PM UTC) - Close
-    - cron: '5 21 * * 1-5'
+    - cron: '35 14 * * 1-5'
       timezone: "America/New_York"
   
   # Allow manual trigger from GitHub UI
